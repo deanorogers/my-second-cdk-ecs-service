@@ -11,14 +11,16 @@
     "@swc/core": "^1.15.0",
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
-    "jest": "^30",
     "aws-cdk": "2.1135.0",
+    "jest": "^30",
     "tsx": "^4.23.0",
     "typescript": "~7.0.2"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.263.0",
-    "constructs": "^10.5.0"
+    "constructs": "^10.5.0",
+    "js-yaml": "^5.4.3"
   }
 }

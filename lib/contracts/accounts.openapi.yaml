@@ -1,0 +1,159 @@
+openapi: 3.0.3
+info:
+  title: Accounts API
+  version: 1.0.0
+  description: Simple Quarkus API for listing and creating bank accounts.
+servers:
+  - url: http://localhost:8080
+paths:
+  /accounts:
+    get:
+      summary: List accounts
+      operationId: listAccounts
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Account'
+              examples:
+                default:
+                  value:
+                    - id: "1001"
+                      name: Checking
+                      currency: USD
+                      balance: 1532.44
+                    - id: "2001"
+                      name: Savings
+                      currency: USD
+                      balance: 8099.12
+    post:
+      summary: Create account
+      operationId: createAccount
+      tags:
+        - Accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+            examples:
+              default:
+                value:
+                  name: Vacation Fund
+                  currency: USD
+                  balance: 750.25
+      responses:
+        '201':
+          description: Account created
+          headers:
+            Location:
+              description: Relative URL of the created resource
+              schema:
+                type: string
+                example: /accounts/4001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Account id already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /accounts/{id}:
+    get:
+      summary: Get account by id
+      operationId: getAccount
+      tags:
+        - Accounts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    Currency:
+      type: string
+      enum:
+        - GBP
+        - USD
+        - EUR
+      example: USD
+    Account:
+      type: object
+      required:
+        - id
+        - name
+        - currency
+        - balance
+      properties:
+        id:
+          type: string
+          example: "2001"
+        name:
+          type: string
+          example: Savings
+        currency:
+          $ref: '#/components/schemas/Currency'
+        balance:
+          type: number
+          format: double
+          example: 8099.12
+    CreateAccountRequest:
+      type: object
+      required:
+        - name
+        - currency
+        - balance
+      properties:
+        id:
+          type: string
+          description: Optional. If omitted, the server assigns a new id.
+          example: "4001"
+        name:
+          type: string
+          example: Vacation Fund
+        currency:
+          $ref: '#/components/schemas/Currency'
+        balance:
+          type: number
+          format: double
+          example: 750.25
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Account not found
+
