@@ -5,6 +5,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { Construct } from 'constructs';
+import { IMAGE_TAG_PARAM_NAME } from './foundation-stack';
 
 export interface EcsServiceStackProps extends cdk.StackProps {
   readonly vpc: ec2.IVpc;
@@ -24,21 +25,22 @@ export class EcsServiceStack extends cdk.Stack {
       lifecycleRules: [{ maxImageCount: 20, description: 'Keep the last 20 images' }],
     });
 
-    // Resolved by CloudFormation at deploy time. The app repo's pipeline updates this SSM
-    // parameter with the tag it deploys, so infra-only deploys keep the current image.
-//     const imageTagParam = new cdk.CfnParameter(this, 'MyImageTag', {
-//       type: 'AWS::SSM::Parameter::Value<String>',
-//       description: 'SSM parameter name holding the ECR image tag to deploy',
-//       default: '/my-second-cdk-ecs-service/image-tag',
-//     });
+
+    const imageTagParam = new cdk.CfnParameter(this, 'MyImageTag', {
+      type: 'AWS::SSM::Parameter::Value<String>',
+      default: IMAGE_TAG_PARAM_NAME,
+    });
 
     new cdk.CfnOutput(this, 'RepositoryUri', { value: repository.repositoryUri });
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc: props.vpc });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', { cpu: 256, memoryLimitMiB: 512 });
     taskDef.addContainer('web', {
-      image: ecs.ContainerImage.fromEcrRepository(repository, "bootstrap"), // imageTagParam.valueAsString),
-      environment: { INJECT_TOKEN: '10' },
+      image: ecs.ContainerImage.fromEcrRepository(repository, imageTagParam.valueAsString),
+      environment: {
+          INJECT_TOKEN: '10',
+          DEPLOY_DATE: '4-NOV-22:01'
+      },
       portMappings: [{ containerPort: 80 }],
 //       healthCheck: {
 //         // Requires curl in the image; healthy only on an exact 200 from the root path.
@@ -80,7 +82,7 @@ export class EcsServiceStack extends cdk.Stack {
       cluster,
       taskDefinition: taskDef,
       taskDefinitionRevision: ecs.TaskDefinitionRevision.LATEST,
-      desiredCount: 3,
+      desiredCount: 5,
       securityGroups: [serviceSg],
       // Native ECS canary (no CodeDeploy): shift 20% of traffic first, bake, then the rest.
       deploymentStrategy: ecs.DeploymentStrategy.CANARY,

@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib/core';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { AlbStack } from '../lib/alb-stack';
 import { EcsServiceStack } from '../lib/ecs-service-stack';
+import { FoundationStack, IMAGE_TAG_PARAM_NAME } from '../lib/foundation-stack';
 
 test('ALB SG only allows HTTP from allowed CIDR', () => {
   const app = new cdk.App();
@@ -35,16 +36,35 @@ test('ALB SG only allows HTTP from allowed CIDR', () => {
       },
     }),
   });
+  Template.fromStack(svc).hasParameter('MyImageTag', {
+    Type: 'AWS::SSM::Parameter::Value<String>',
+    Default: IMAGE_TAG_PARAM_NAME,
+  });
   Template.fromStack(svc).hasResourceProperties('AWS::ECS::TaskDefinition', {
     ContainerDefinitions: Match.arrayWith([
       Match.objectLike({
         Name: 'web',
         Image: {
           'Fn::Join': Match.arrayWith([
-            Match.arrayWith([Match.stringLikeRegexp(':bootstrap$')]),
+            Match.arrayWith([{ Ref: 'MyImageTag' }]),
           ]),
         },
       }),
     ]),
+  });
+});
+
+test('Foundation stack owns the retained image tag SSM parameter', () => {
+  const app = new cdk.App();
+  const foundation = new FoundationStack(app, 'Foundation');
+  const template = Template.fromStack(foundation);
+  template.hasParameter('InitialImageTag', { Type: 'String', Default: Match.absent() });
+  template.hasResource('AWS::SSM::Parameter', {
+    Properties: {
+      Name: IMAGE_TAG_PARAM_NAME,
+      Type: 'String',
+      Value: { Ref: 'InitialImageTag' },
+    },
+    DeletionPolicy: 'Retain',
   });
 });
