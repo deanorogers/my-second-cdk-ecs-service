@@ -13,13 +13,15 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-const foundationStack = new FoundationStack(app, 'FoundationStack', { env });
-
 const albStack = new AlbStack(app, 'AlbStack', { env });
+
+const foundationStack = new FoundationStack(app, 'FoundationStack', { env, vpc: albStack.vpc });
 
 const ecsServiceStack = new EcsServiceStack(app, 'EcsServiceStack', {
   env,
   vpc: albStack.vpc,
+  alb: albStack.alb,
+  serviceNetwork: foundationStack.serviceNetwork,
   albSecurityGroup: albStack.albSecurityGroup,
   targetGroup: albStack.targetGroup,
   alternateTargetGroup: albStack.alternateTargetGroup,

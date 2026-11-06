@@ -7,9 +7,12 @@ import { FoundationStack, IMAGE_TAG_PARAM_NAME } from '../lib/foundation-stack';
 test('ALB SG only allows HTTP from allowed CIDR', () => {
   const app = new cdk.App();
   const alb = new AlbStack(app, 'Alb', undefined);
+  const foundation = new FoundationStack(app, 'Foundation', { vpc: alb.vpc });
   const svc = new EcsServiceStack(app, 'Svc', {
     vpc: alb.vpc,
+    alb: alb.alb,
     albSecurityGroup: alb.albSecurityGroup,
+    serviceNetwork: foundation.serviceNetwork,
     targetGroup: alb.targetGroup,
     alternateTargetGroup: alb.alternateTargetGroup,
     productionListenerRule: alb.productionListenerRule,
@@ -22,6 +25,22 @@ test('ALB SG only allows HTTP from allowed CIDR', () => {
     SecurityGroupIngress: Match.absent(),
   });
   Template.fromStack(svc).resourceCountIs('AWS::ECS::Service', 1);
+  Template.fromStack(svc).hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
+    IpProtocol: 'tcp',
+    FromPort: 80,
+    ToPort: 80,
+    SourcePrefixListId: Match.anyValue(),
+  });
+  Template.fromStack(svc).hasResourceProperties('AWS::VpcLattice::TargetGroup', {
+    Type: 'ALB',
+    Config: Match.objectLike({ Port: 80, Protocol: 'HTTP', HealthCheck: Match.absent() }),
+  });
+  Template.fromStack(svc).hasResourceProperties('AWS::VpcLattice::Listener', {
+    Protocol: 'HTTP',
+    Port: 80,
+  });
+  Template.fromStack(svc).resourceCountIs('AWS::VpcLattice::Service', 1);
+  Template.fromStack(svc).resourceCountIs('AWS::VpcLattice::ServiceNetworkServiceAssociation', 1);
   Template.fromStack(svc).resourceCountIs('AWS::CloudWatch::Alarm', 2);
   Template.fromStack(svc).hasResourceProperties('AWS::ECS::Service', {
     DeploymentConfiguration: Match.objectLike({
@@ -54,17 +73,23 @@ test('ALB SG only allows HTTP from allowed CIDR', () => {
   });
 });
 
-test('Foundation stack owns the retained image tag SSM parameter', () => {
+test('Foundation stack owns the image tag SSM parameter and the Lattice service network', () => {
   const app = new cdk.App();
-  const foundation = new FoundationStack(app, 'Foundation');
+  const alb = new AlbStack(app, 'Alb', undefined);
+  const foundation = new FoundationStack(app, 'Foundation', { vpc: alb.vpc });
   const template = Template.fromStack(foundation);
-  template.hasParameter('InitialImageTag', { Type: 'String', Default: Match.absent() });
-  template.hasResource('AWS::SSM::Parameter', {
-    Properties: {
-      Name: IMAGE_TAG_PARAM_NAME,
-      Type: 'String',
-      Value: { Ref: 'InitialImageTag' },
-    },
-    DeletionPolicy: 'Retain',
+  template.hasResourceProperties('AWS::SSM::Parameter', {
+    Name: IMAGE_TAG_PARAM_NAME,
+    Type: 'String',
+  });
+  template.resourceCountIs('AWS::VpcLattice::ServiceNetwork', 1);
+  template.hasResourceProperties('AWS::VpcLattice::ServiceNetwork', {
+    Name: 'my-second-cdk-ecs-service-network',
+    AuthType: 'NONE',
+  });
+  template.resourceCountIs('AWS::VpcLattice::ServiceNetworkVpcAssociation', 1);
+  template.hasResourceProperties('AWS::VpcLattice::ServiceNetworkVpcAssociation', {
+    ServiceNetworkIdentifier: Match.anyValue(),
+    VpcIdentifier: Match.anyValue(),
   });
 });
