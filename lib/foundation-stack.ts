@@ -7,17 +7,13 @@ export const IMAGE_TAG_PARAM_NAME = '/my-second-cdk-ecs-service/image-tag';
 export class FoundationStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+   });
 
-//     const initialTag = new cdk.CfnParameter(this, 'InitialImageTag', {
-//       type: 'String',
-//       description: 'Image tag to seed the SSM parameter with; only used on creation',
-//     });
-
+    // this will store the image tag to deploy, which is updated by the app pipeline
     const imageTag = new ssm.StringParameter(this, 'ImageTagParameter', {
       parameterName: IMAGE_TAG_PARAM_NAME,
       stringValue: "bootstrap",
       description: 'ECR image tag currently deployed. Updated by the app pipeline.',
     });
-//     imageTag.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
   }
 }

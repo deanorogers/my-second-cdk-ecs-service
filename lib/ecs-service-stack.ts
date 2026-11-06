@@ -14,18 +14,20 @@ export interface EcsServiceStackProps extends cdk.StackProps {
   readonly alternateTargetGroup: elbv2.ApplicationTargetGroup;
   readonly productionListenerRule: elbv2.ApplicationListenerRule;
 }
-
+/*
+** When infra initially deploys, ensure desireCount is zero so the service doesn't start until the image is built, pushed to ECR and its tag stored in Parameter Store
+*/
 export class EcsServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: EcsServiceStackProps) {
     super(scope, id, props);
-
     const repository = new ecr.Repository(this, 'AppRepository', {
       imageScanOnPush: true,
       imageTagMutability: ecr.TagMutability.IMMUTABLE,
       lifecycleRules: [{ maxImageCount: 20, description: 'Keep the last 20 images' }],
     });
 
-
+    // read the image tag to deploy from SSM
+    // which is set by the app pipeline
     const imageTagParam = new cdk.CfnParameter(this, 'MyImageTag', {
       type: 'AWS::SSM::Parameter::Value<String>',
       default: IMAGE_TAG_PARAM_NAME,
@@ -39,7 +41,7 @@ export class EcsServiceStack extends cdk.Stack {
       image: ecs.ContainerImage.fromEcrRepository(repository, imageTagParam.valueAsString),
       environment: {
           INJECT_TOKEN: '10',
-          DEPLOY_DATE: '4-NOV-22:01'
+          DEPLOY_DATE: '5-NOV-22:01'
       },
       portMappings: [{ containerPort: 80 }],
 //       healthCheck: {
