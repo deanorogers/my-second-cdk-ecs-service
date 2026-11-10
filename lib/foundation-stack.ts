@@ -5,6 +5,7 @@ import * as vpclattice from 'aws-cdk-lib/aws-vpclattice';
 import { Construct } from 'constructs';
 
 export const IMAGE_TAG_PARAM_NAME = '/my-second-cdk-ecs-service/image-tag';
+export const TRANSACTIONS_IMAGE_TAG_PARAM_NAME = '/my-second-cdk-ecs-service/transactions/image-tag';
 
 export interface FoundationStackProps extends cdk.StackProps {
   readonly vpc: ec2.IVpc;
@@ -21,6 +22,13 @@ export class FoundationStack extends cdk.Stack {
       parameterName: IMAGE_TAG_PARAM_NAME,
       stringValue: "bootstrap",
       description: 'ECR image tag currently deployed. Updated by the app pipeline.',
+    });
+
+    // image tag for the transactions service, updated by the transactions app pipeline
+    new ssm.StringParameter(this, 'TransactionsImageTagParameter', {
+      parameterName: TRANSACTIONS_IMAGE_TAG_PARAM_NAME,
+      stringValue: "bootstrap",
+      description: 'Transactions ECR image tag currently deployed. Updated by the transactions app pipeline.',
     });
 
     // Logical network that Lattice services and VPCs are associated with.

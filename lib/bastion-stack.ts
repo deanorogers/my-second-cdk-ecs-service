@@ -9,10 +9,12 @@ export interface BastionStackProps extends cdk.StackProps {
 }
 
 export class BastionStack extends cdk.Stack {
+  public readonly bastionSecurityGroup: ec2.SecurityGroup;
+
   constructor(scope: Construct, id: string, props: BastionStackProps) {
     super(scope, id, props);
 
-    const bastionSg = new ec2.SecurityGroup(this, 'BastionSecurityGroup', {
+    const bastionSg = this.bastionSecurityGroup = new ec2.SecurityGroup(this, 'BastionSecurityGroup', {
       vpc: props.vpc,
       description: 'Bastion: no inbound; outbound allowed (reaches ALB)',
       allowAllOutbound: true,

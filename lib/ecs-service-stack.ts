@@ -12,6 +12,8 @@ import { IMAGE_TAG_PARAM_NAME } from './foundation-stack';
 export interface EcsServiceStackProps extends cdk.StackProps {
   readonly vpc: ec2.IVpc;
   readonly alb: elbv2.IApplicationLoadBalancer;
+  readonly transactionsDnsName: string;
+  readonly transactionsSecurityGroup: ec2.ISecurityGroup;
   readonly albSecurityGroup: ec2.ISecurityGroup;
   readonly serviceNetwork: vpclattice.CfnServiceNetwork;
   readonly targetGroup: elbv2.ApplicationTargetGroup;
@@ -45,7 +47,8 @@ export class EcsServiceStack extends cdk.Stack {
       image: ecs.ContainerImage.fromEcrRepository(repository, imageTagParam.valueAsString),
       environment: {
           INJECT_TOKEN: '10',
-          DEPLOY_DATE: '5-NOV-22:01'
+          TRANSACTIONS_BASE_URL: `http://${props.transactionsDnsName}`,
+          DEPLOY_DATE: '5-NOV-22:01',
       },
       portMappings: [{ containerPort: 80 }],
 //       healthCheck: {
@@ -65,6 +68,15 @@ export class EcsServiceStack extends cdk.Stack {
       description: 'ECS service: HTTP from ALB only',
     });
     serviceSg.addIngressRule(props.albSecurityGroup, ec2.Port.tcp(80), 'HTTP from ALB');
+    // Defined here (not via the Transactions SG) to avoid a cyclic stack dependency.
+    new ec2.CfnSecurityGroupIngress(this, 'TransactionsNlbIngressFromService', {
+      groupId: props.transactionsSecurityGroup.securityGroupId,
+      sourceSecurityGroupId: serviceSg.securityGroupId,
+      ipProtocol: 'tcp',
+      fromPort: 80,
+      toPort: 80,
+      description: 'HTTP from accounts service',
+    });
 
     // ECS watches these through the whole canary (step bake + final bake) and rolls back if any fires.
     // They only reference the target groups in AlbStack, so there is no cycle with the service.
