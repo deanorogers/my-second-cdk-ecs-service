@@ -5,6 +5,7 @@ import { EcsServiceStack } from '../lib/ecs-service-stack';
 import { FoundationStack, IMAGE_TAG_PARAM_NAME, TRANSACTIONS_IMAGE_TAG_PARAM_NAME } from '../lib/foundation-stack';
 import { BastionStack } from '../lib/bastion-stack';
 import { TransactionsStack } from '../lib/transactions-stack';
+import { TransactionsLatticeStack } from '../lib/transactions-lattice-stack';
 import { NlbStack } from '../lib/nlb-stack';
 
 test('ALB SG only allows HTTP from allowed CIDR', () => {
@@ -194,6 +195,39 @@ test('NLB stack weight-balances across two Transactions ALBs', () => {
         },
       }),
     ],
+  });
+  template.resourceCountIs('AWS::EC2::SecurityGroupIngress', 2);
+});
+
+test('Transactions Lattice stack weights two ALB-type target groups on the service network', () => {
+  const app = new cdk.App();
+  const alb = new AlbStack(app, 'Alb', undefined);
+  const foundation = new FoundationStack(app, 'Foundation', { vpc: alb.vpc });
+  const green = new TransactionsStack(app, 'TxGreen', { vpc: alb.vpc });
+  const blue = new TransactionsStack(app, 'TxBlue', { vpc: alb.vpc, repository: green.repository });
+  const lattice = new TransactionsLatticeStack(app, 'TxLattice', {
+    vpc: alb.vpc,
+    serviceNetwork: foundation.serviceNetwork,
+    backends: [
+      { name: 'Green', alb: green.alb, securityGroup: green.albSecurityGroup, weight: 70 },
+      { name: 'Blue', alb: blue.alb, securityGroup: blue.albSecurityGroup, weight: 30 },
+    ],
+  });
+
+  const template = Template.fromStack(lattice);
+  template.resourceCountIs('AWS::VpcLattice::TargetGroup', 2);
+  template.hasResourceProperties('AWS::VpcLattice::TargetGroup', { Type: 'ALB' });
+  template.resourceCountIs('AWS::VpcLattice::Service', 1);
+  template.resourceCountIs('AWS::VpcLattice::ServiceNetworkServiceAssociation', 1);
+  template.hasResourceProperties('AWS::VpcLattice::Listener', {
+    DefaultAction: {
+      Forward: {
+        TargetGroups: [
+          Match.objectLike({ Weight: 70 }),
+          Match.objectLike({ Weight: 30 }),
+        ],
+      },
+    },
   });
   template.resourceCountIs('AWS::EC2::SecurityGroupIngress', 2);
 });

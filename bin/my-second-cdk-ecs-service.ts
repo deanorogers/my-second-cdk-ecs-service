@@ -6,6 +6,7 @@ import { EcsServiceStack } from '../lib/ecs-service-stack';
 import { ApiGatewayStack } from '../lib/apigateway';
 import { FoundationStack } from '../lib/foundation-stack';
 import { NlbStack } from '../lib/nlb-stack';
+import { TransactionsLatticeStack } from '../lib/transactions-lattice-stack';
 import { TransactionsStack } from '../lib/transactions-stack';
 
 const app = new cdk.App();
@@ -43,6 +44,16 @@ const transactionsBlueStack = new TransactionsStack(app, 'TransactionsStackBlue'
   repository: transactionsStack.repository,
 });
 transactionsBlueStack.addStackDependency(foundationStack);
+
+new TransactionsLatticeStack(app, 'TransactionsLatticeStack', {
+  env,
+  vpc: albStack.vpc,
+  serviceNetwork: foundationStack.serviceNetwork,
+  backends: [
+    { name: 'Green', alb: transactionsStack.alb, securityGroup: transactionsStack.albSecurityGroup, weight: 50 },
+    { name: 'Blue', alb: transactionsBlueStack.alb, securityGroup: transactionsBlueStack.albSecurityGroup, weight: 50 },
+  ],
+});
 
 const nlbStack = new NlbStack(app, 'NlbStack', {
   env,
