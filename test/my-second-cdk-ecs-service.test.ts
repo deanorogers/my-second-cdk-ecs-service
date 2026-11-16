@@ -7,6 +7,70 @@ import { BastionStack } from '../lib/bastion-stack';
 import { TransactionsStack } from '../lib/transactions-stack';
 import { TransactionsLatticeStack } from '../lib/transactions-lattice-stack';
 import { NlbStack } from '../lib/nlb-stack';
+import { TransactionsDnsStack } from '../lib/transactions-dns-stack';
+
+test('Private weighted DNS targets both ALBs and accounts can call both directly', () => {
+  const app = new cdk.App();
+  const alb = new AlbStack(app, 'Alb');
+  const foundation = new FoundationStack(app, 'Foundation', { vpc: alb.vpc });
+  const green = new TransactionsStack(app, 'Green', { vpc: alb.vpc });
+  const blue = new TransactionsStack(app, 'Blue', { vpc: alb.vpc, repository: green.repository });
+  const dns = new TransactionsDnsStack(app, 'Dns', {
+    vpc: alb.vpc,
+    backends: [
+      { name: 'Green', alb: green.alb, weight: 70 },
+      { name: 'Blue', alb: blue.alb, weight: 30 },
+    ],
+  });
+  const svc = new EcsServiceStack(app, 'Svc', {
+    vpc: alb.vpc,
+    alb: alb.alb,
+    transactionsDnsName: dns.dnsName,
+    transactionsSecurityGroups: [green.albSecurityGroup, blue.albSecurityGroup],
+    albSecurityGroup: alb.albSecurityGroup,
+    serviceNetwork: foundation.serviceNetwork,
+    targetGroup: alb.targetGroup,
+    alternateTargetGroup: alb.alternateTargetGroup,
+    productionListenerRule: alb.productionListenerRule,
+  });
+  svc.addStackDependency(dns);
+  app.synth(); // Includes cross-stack dependency cycle validation.
+
+  const template = Template.fromStack(dns);
+  template.hasResourceProperties('AWS::Route53::HostedZone', {
+    Name: 'red.com.',
+    VPCs: [{ VPCId: dns.resolve(alb.vpc.vpcId), VPCRegion: { Ref: 'AWS::Region' } }],
+  });
+  template.resourceCountIs('AWS::Route53::RecordSet', 2);
+  for (const [name, backend, weight] of [['Green', green, 70], ['Blue', blue, 30]] as const) {
+    template.hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'transactions.red.com',
+      Type: 'A',
+      SetIdentifier: name,
+      Weight: weight,
+      AliasTarget: {
+        DNSName: dns.resolve(backend.alb.loadBalancerDnsName),
+        HostedZoneId: dns.resolve(backend.alb.loadBalancerCanonicalHostedZoneId),
+        EvaluateTargetHealth: true,
+      },
+    });
+  }
+  const serviceTemplate = Template.fromStack(svc);
+  serviceTemplate.hasResourceProperties('AWS::ECS::TaskDefinition', {
+    ContainerDefinitions: Match.arrayWith([Match.objectLike({
+      Name: 'web',
+      Environment: Match.arrayWith([{ Name: 'TRANSACTIONS_BASE_URL', Value: 'http://transactions.red.com' }]),
+    })]),
+  });
+  for (const backend of [green, blue]) {
+    serviceTemplate.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
+      GroupId: svc.resolve(backend.albSecurityGroup.securityGroupId),
+      SourceSecurityGroupId: Match.anyValue(),
+      IpProtocol: 'tcp', FromPort: 80, ToPort: 80,
+      Description: 'HTTP from accounts service',
+    });
+  }
+});
 
 test('ALB SG only allows HTTP from allowed CIDR', () => {
   const app = new cdk.App();
@@ -17,7 +81,7 @@ test('ALB SG only allows HTTP from allowed CIDR', () => {
     vpc: alb.vpc,
     alb: alb.alb,
     transactionsDnsName: tx.alb.loadBalancerDnsName,
-    transactionsSecurityGroup: tx.albSecurityGroup,
+    transactionsSecurityGroups: [tx.albSecurityGroup],
     albSecurityGroup: alb.albSecurityGroup,
     serviceNetwork: foundation.serviceNetwork,
     targetGroup: alb.targetGroup,

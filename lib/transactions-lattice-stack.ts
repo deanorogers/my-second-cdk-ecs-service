@@ -43,6 +43,8 @@ export class TransactionsLatticeStack extends cdk.Stack {
     });
     const prefixListId = latticePrefixList.getResponseField('PrefixLists.0.PrefixListId');
 
+    // each backend is composed ALB: ARN, SG and weight
+    // the weight is set by the app with default equal distribution
     const weighted = props.backends.map((backend) => {
       // Separate rule (not inline on the ALB SG) to avoid a cyclic stack dependency.
       new ec2.CfnSecurityGroupIngress(this, `${backend.name}LatticeToAlbIngress`, {

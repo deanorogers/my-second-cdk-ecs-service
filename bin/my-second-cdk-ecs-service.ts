@@ -8,6 +8,7 @@ import { FoundationStack } from '../lib/foundation-stack';
 import { NlbStack } from '../lib/nlb-stack';
 import { TransactionsLatticeStack } from '../lib/transactions-lattice-stack';
 import { TransactionsStack } from '../lib/transactions-stack';
+import { TransactionsDnsStack } from '../lib/transactions-dns-stack';
 
 const app = new cdk.App();
 
@@ -65,13 +66,22 @@ const nlbStack = new NlbStack(app, 'NlbStack', {
   ],
 });
 
-// allows the accounts service to call the transactions service via its internal ALB.
+const transactionsDnsStack = new TransactionsDnsStack(app, 'TransactionsDnsStack', {
+  env,
+  vpc: albStack.vpc,
+  backends: [
+    { name: 'Green', alb: transactionsStack.alb, weight: 50 },
+    { name: 'Blue', alb: transactionsBlueStack.alb, weight: 50 },
+  ],
+});
+
+// Accounts calls the Transactions ALBs through weighted private DNS.
 const ecsServiceStack = new EcsServiceStack(app, 'EcsServiceStack', {
   env,
   vpc: albStack.vpc,
   alb: albStack.alb,
-  transactionsDnsName: nlbStack.nlb.loadBalancerDnsName,
-  transactionsSecurityGroup: nlbStack.securityGroup,
+  transactionsDnsName: transactionsDnsStack.dnsName,
+  transactionsSecurityGroups: [transactionsStack.albSecurityGroup, transactionsBlueStack.albSecurityGroup],
   serviceNetwork: foundationStack.serviceNetwork,
   albSecurityGroup: albStack.albSecurityGroup,
   targetGroup: albStack.targetGroup,
@@ -80,6 +90,8 @@ const ecsServiceStack = new EcsServiceStack(app, 'EcsServiceStack', {
 });
 // The image tag is read from SSM by name, so CDK can't infer this dependency.
 ecsServiceStack.addStackDependency(foundationStack);
+// The DNS name is a literal, so CDK cannot infer this dependency.
+ecsServiceStack.addStackDependency(transactionsDnsStack);
 
 new ApiGatewayStack(app, 'ApiGatewayStack', {
   env,

@@ -13,7 +13,7 @@ export interface EcsServiceStackProps extends cdk.StackProps {
   readonly vpc: ec2.IVpc;
   readonly alb: elbv2.IApplicationLoadBalancer;
   readonly transactionsDnsName: string;
-  readonly transactionsSecurityGroup: ec2.ISecurityGroup;
+  readonly transactionsSecurityGroups: ec2.ISecurityGroup[];
   readonly albSecurityGroup: ec2.ISecurityGroup;
   readonly serviceNetwork: vpclattice.CfnServiceNetwork;
   readonly targetGroup: elbv2.ApplicationTargetGroup;
@@ -69,14 +69,14 @@ export class EcsServiceStack extends cdk.Stack {
     });
     serviceSg.addIngressRule(props.albSecurityGroup, ec2.Port.tcp(80), 'HTTP from ALB');
     // Defined here (not via the Transactions SG) to avoid a cyclic stack dependency.
-    new ec2.CfnSecurityGroupIngress(this, 'TransactionsNlbIngressFromService', {
-      groupId: props.transactionsSecurityGroup.securityGroupId,
+    props.transactionsSecurityGroups.forEach((securityGroup, i) => new ec2.CfnSecurityGroupIngress(this, `TransactionsAlbIngressFromService${i}`, {
+      groupId: securityGroup.securityGroupId,
       sourceSecurityGroupId: serviceSg.securityGroupId,
       ipProtocol: 'tcp',
       fromPort: 80,
       toPort: 80,
       description: 'HTTP from accounts service',
-    });
+    }));
 
     // ECS watches these through the whole canary (step bake + final bake) and rolls back if any fires.
     // They only reference the target groups in AlbStack, so there is no cycle with the service.
